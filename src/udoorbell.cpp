@@ -23,7 +23,7 @@ IPAddress multicastAddress(224,0,0,121);
 // 224.0.0.121
 
 char packet_buf[512] = {};
-
+static uint32_t trigger_signal_count = 0;
 
 void play_tone(int freq) {
   analogWrite(D3, 128, freq) ; 
@@ -41,19 +41,23 @@ void play_note(int freq, bool end) {
 }
 
 void play_tone_sequence() {
-    // G A F down F C
-
-  // play_note(NOTE_G7, false);
-  // play_note(NOTE_A7, false);
-  // play_note(NOTE_F7, false);
-  // play_note(NOTE_F6, false);
-  // play_note(NOTE_C7, true);
+    // G A F down F up C
 
   play_note(NOTE_G6, false);
   play_note(NOTE_A6, false);
   play_note(NOTE_F6, false);
   play_note(NOTE_F5, false);
   play_note(NOTE_C6, true);
+}
+
+
+// ============================================================================
+// Simulate a doorbell button press-- useful for development testing
+// Cloud functions must return int and take one String
+int fake_remote_signal(String extra) {
+  Log.info("fake_remote_signal");
+  trigger_signal_count += 5;
+  return 0;
 }
 
 void init_multicast_port() {
@@ -63,8 +67,8 @@ void init_multicast_port() {
     Log.info("wifi ready");
     udp_sock.begin(UDP_MULTI_PORT);
     udp_sock.joinMulticast(multicastAddress);
-    IPAddress localIP = WiFi.localIP();
-    Log.info("%u.%u.%u.%u", localIP[0], localIP[1], localIP[2], localIP[3]);
+    // IPAddress localIP = WiFi.localIP();
+    // Log.info("%u.%u.%u.%u", localIP[0], localIP[1], localIP[2], localIP[3]);
   }
   else {
     Log.error("no wifi available");
@@ -76,19 +80,26 @@ void init_multicast_port() {
 void setup() {
   delay(4000);
   Log.info("begin...");
-  init_multicast_port();
+
 
   pinMode(D3, OUTPUT);     // sets the pin as output
-  play_tone_sequence();
 
   Log.info("connecting...");
-
   Particle.connect();
-  waitFor(Particle.connected,45000);
+  play_tone_sequence();
+
+  waitFor(Particle.connected,90000);
+  if (Particle.connected()) {
+      Log.info("conneted");
+      Particle.function("fakeRemote", fake_remote_signal);
+      init_multicast_port();
+  }
+  else {
+    Log.warn("could not connect!");
+  }
 
   IPAddress localIP = WiFi.localIP();
   Log.info("%u.%u.%u.%u", localIP[0], localIP[1], localIP[2], localIP[3]);
-
 
 
 }
@@ -98,13 +109,17 @@ void setup() {
 void loop() {
 
   packet_buf[0] = 0;
+  if (trigger_signal_count > 0) {
+    trigger_signal_count = 0;
+    play_tone_sequence();
+  }
 
   int count = udp_sock.receivePacket((byte*)packet_buf, 127);
   if (count >= 0 && count < 128) {
     packet_buf[count] = 0;
     if (count > 0) {
       Log.info("received %u", count);
-      play_tone_sequence();
+      trigger_signal_count += count;
     }
     else {
       delay(1000);
