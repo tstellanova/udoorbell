@@ -90,8 +90,9 @@ void setup() {
 
   waitFor(Particle.connected,90000);
   if (Particle.connected()) {
-      Log.info("conneted");
-      Particle.function("fakeRemote", fake_remote_signal);
+      Log.info("connected!");
+      bool res = Particle.function("fakeRemote", fake_remote_signal);
+      Log.info("function setup res: %d", res);
       init_multicast_port();
   }
   else {
